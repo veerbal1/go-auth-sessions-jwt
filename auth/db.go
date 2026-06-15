@@ -149,3 +149,40 @@ func LoginWithSession(ctx context.Context, db *sql.DB, in LoginInput, lifetime t
 		ExpiresAt: session.ExpiresAt,
 	}, nil
 }
+
+type LoginResult struct {
+	UserID           string
+	Name             string
+	Email            string
+	SessionID        string
+	SessionExpiresAt time.Time
+	RefreshToken     string
+	RefreshExpiresAt time.Time
+}
+
+func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, sessionLifetime, refreshLifetime time.Duration, userAgent, ipHash string) (LoginResult, error) {
+	user, err := Login(ctx, db, in)
+	if err != nil {
+		return LoginResult{}, err
+	}
+
+	session, err := CreateSession(ctx, db, user.ID, sessionLifetime, userAgent, ipHash)
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	refresh, err := CreateRefreshToken(ctx, db, session.ID, refreshLifetime)
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("failed to create refresh token: %w", err)
+	}
+
+	return LoginResult{
+		UserID:           user.ID,
+		Name:             user.Name,
+		Email:            user.Email,
+		SessionID:        session.ID,
+		SessionExpiresAt: session.ExpiresAt,
+		RefreshToken:     refresh.RawToken,
+		RefreshExpiresAt: refresh.ExpiresAt,
+	}, nil
+}
