@@ -89,6 +89,16 @@ func TestRotateRefreshTokenSuccess(t *testing.T) {
 	if claims.SessionID != result.SessionID {
 		t.Errorf("access token session = %q, want %q", claims.SessionID, result.SessionID)
 	}
+
+	var rotatedCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.refresh_rotated' AND session_id = $1`,
+		result.SessionID,
+	).Scan(&rotatedCount)
+	if rotatedCount != 1 {
+		t.Errorf("auth.refresh_rotated audit count = %d, want 1", rotatedCount)
+	}
 }
 
 func TestRotateRefreshTokenOldTokenRejected(t *testing.T) {
@@ -134,5 +144,41 @@ func TestRotateRefreshTokenOldTokenRejected(t *testing.T) {
 	var authErr *AuthenticationError
 	if !errors.As(err, &authErr) {
 		t.Errorf("expected AuthenticationError, got %T", err)
+	}
+
+	var reuseCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.refresh_reuse_detected' AND session_id = $1`,
+		result.SessionID,
+	).Scan(&reuseCount)
+	if reuseCount != 1 {
+		t.Errorf("auth.refresh_reuse_detected audit count = %d, want 1", reuseCount)
+	}
+
+	var sessionRevoked sql.NullTime
+	var sessionReason sql.NullString
+	db.QueryRowContext(context.Background(),
+		`SELECT revoked_at, revoke_reason FROM sessions WHERE id = $1`,
+		result.SessionID,
+	).Scan(&sessionRevoked, &sessionReason)
+	if !sessionRevoked.Valid {
+		t.Error("session must be revoked on reuse")
+	}
+	if sessionReason.String != "refresh_reuse" {
+		t.Errorf("session revoke_reason = %q, want %q", sessionReason.String, "refresh_reuse")
+	}
+
+	var tokenRevoked sql.NullTime
+	var tokenReason sql.NullString
+	db.QueryRowContext(context.Background(),
+		`SELECT revoked_at, revoke_reason FROM refresh_tokens WHERE session_id = $1`,
+		result.SessionID,
+	).Scan(&tokenRevoked, &tokenReason)
+	if !tokenRevoked.Valid {
+		t.Error("refresh tokens must be revoked on reuse")
+	}
+	if tokenReason.String != "refresh_reuse" {
+		t.Errorf("token revoke_reason = %q, want %q", tokenReason.String, "refresh_reuse")
 	}
 }

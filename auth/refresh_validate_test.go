@@ -117,7 +117,7 @@ func TestValidateRefreshTokenExpired(t *testing.T) {
 	}
 }
 
-func TestValidateRefreshTokenAlreadyUsed(t *testing.T) {
+func TestValidateRefreshTokenAcceptsUsedToken(t *testing.T) {
 	db := testDB(t)
 
 	email := uniqueEmail()
@@ -150,12 +150,8 @@ func TestValidateRefreshTokenAlreadyUsed(t *testing.T) {
 	)
 
 	_, err = ValidateRefreshToken(context.Background(), db, result.RefreshToken)
-	if err == nil {
-		t.Fatal("must fail for used token")
-	}
-	var authErr *AuthenticationError
-	if !errors.As(err, &authErr) {
-		t.Errorf("expected AuthenticationError, got %T", err)
+	if err != nil {
+		t.Fatalf("ValidateRefreshToken must accept used token for reuse detection: %v", err)
 	}
 }
 

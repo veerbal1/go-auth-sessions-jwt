@@ -92,10 +92,6 @@ func ValidateRefreshToken(ctx context.Context, db *sql.DB, rawToken string) (Val
 		return ValidatedRefreshToken{}, fmt.Errorf("failed to find refresh token: %w", err)
 	}
 
-	if tokenUsedAt.Valid {
-		return ValidatedRefreshToken{}, NewAuthenticationError("invalid refresh token")
-	}
-
 	if tokenRevokedAt.Valid {
 		return ValidatedRefreshToken{}, NewAuthenticationError("invalid refresh token")
 	}
@@ -160,6 +156,33 @@ func RotateRefreshToken(ctx context.Context, db *sql.DB, rawToken string, jwtSec
 		return RotatedTokens{}, fmt.Errorf("failed to check rows affected: %w", err)
 	}
 	if rows != 1 {
+		if _, auditErr := WriteAuditEvent(ctx, tx, AuditEventInput{
+			EventType: "auth.refresh_reuse_detected",
+			UserID:    validated.UserID,
+			SessionID: validated.SessionID,
+		}); auditErr != nil {
+			return RotatedTokens{}, fmt.Errorf("failed to write reuse audit: %w", auditErr)
+		}
+
+		if _, execErr := tx.ExecContext(ctx,
+			`UPDATE sessions SET revoked_at = now(), revoke_reason = 'refresh_reuse' WHERE id = $1`,
+			validated.SessionID,
+		); execErr != nil {
+			return RotatedTokens{}, fmt.Errorf("failed to revoke session: %w", execErr)
+		}
+
+		if _, execErr := tx.ExecContext(ctx,
+			`UPDATE refresh_tokens SET revoked_at = now(), revoke_reason = 'refresh_reuse'
+			 WHERE session_id = $1 AND revoked_at IS NULL`,
+			validated.SessionID,
+		); execErr != nil {
+			return RotatedTokens{}, fmt.Errorf("failed to revoke refresh tokens: %w", execErr)
+		}
+
+		if commitErr := tx.Commit(); commitErr != nil {
+			return RotatedTokens{}, fmt.Errorf("failed to commit revocation: %w", commitErr)
+		}
+
 		return RotatedTokens{}, NewAuthenticationError("invalid refresh token")
 	}
 
@@ -186,6 +209,14 @@ func RotateRefreshToken(ctx context.Context, db *sql.DB, rawToken string, jwtSec
 	)
 	if err != nil {
 		return RotatedTokens{}, fmt.Errorf("failed to link tokens: %w", err)
+	}
+
+	if _, err := WriteAuditEvent(ctx, tx, AuditEventInput{
+		EventType: "auth.refresh_rotated",
+		UserID:    validated.UserID,
+		SessionID: validated.SessionID,
+	}); err != nil {
+		return RotatedTokens{}, fmt.Errorf("failed to write audit event: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
