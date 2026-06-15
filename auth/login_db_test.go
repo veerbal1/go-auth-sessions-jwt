@@ -44,7 +44,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	db := testDB(t)
 
 	email := uniqueEmail()
-	_, err := Signup(context.Background(), db, SignInSignUpParameters{
+	user, err := Signup(context.Background(), db, SignInSignUpParameters{
 		Name:     "Wrong Pass Test",
 		Email:    email,
 		Password: "password123",
@@ -52,6 +52,9 @@ func TestLoginWrongPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Signup failed: %v", err)
 	}
+	defer func() {
+		db.ExecContext(context.Background(), `DELETE FROM users WHERE id = $1`, user.ID)
+	}()
 
 	_, err = Login(context.Background(), db, LoginInput{
 		Email:    email,
@@ -65,13 +68,23 @@ func TestLoginWrongPassword(t *testing.T) {
 	if !errors.As(err, &authErr) {
 		t.Errorf("expected AuthenticationError, got %T: %v", err, err)
 	}
+
+	var eventCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events WHERE event_type = 'auth.login_failed' AND user_id = $1`, user.ID,
+	).Scan(&eventCount)
+	if eventCount != 1 {
+		t.Errorf("auth.login_failed audit event count = %d, want 1", eventCount)
+	}
 }
 
 func TestLoginUnknownEmail(t *testing.T) {
 	db := testDB(t)
 
+	unknownEmail := uniqueEmail()
+
 	_, err := Login(context.Background(), db, LoginInput{
-		Email:    "nonexistent@example.com",
+		Email:    unknownEmail,
 		Password: "password123",
 	})
 	if err == nil {
@@ -81,6 +94,18 @@ func TestLoginUnknownEmail(t *testing.T) {
 	var authErr *AuthenticationError
 	if !errors.As(err, &authErr) {
 		t.Errorf("expected AuthenticationError, got %T: %v", err, err)
+	}
+
+	var eventCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.login_failed'
+		 AND user_id IS NULL
+		 AND metadata->>'email' = $1`,
+		unknownEmail,
+	).Scan(&eventCount)
+	if eventCount != 1 {
+		t.Errorf("auth.login_failed audit event count = %d, want 1", eventCount)
 	}
 }
 
@@ -167,5 +192,13 @@ func TestLoginDisabledUser(t *testing.T) {
 	}
 	if authErr.Message != "invalid email or password" {
 		t.Errorf("message = %q, want %q", authErr.Message, "invalid email or password")
+	}
+
+	var eventCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events WHERE event_type = 'auth.login_failed' AND user_id = $1`, user.ID,
+	).Scan(&eventCount)
+	if eventCount != 1 {
+		t.Errorf("auth.login_failed audit event count = %d, want 1", eventCount)
 	}
 }

@@ -64,6 +64,11 @@ func Signup(ctx context.Context, db *sql.DB, in SignInSignUpParameters) (Created
 		return CreatedUser{}, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	WriteAuditEvent(ctx, db, AuditEventInput{
+		EventType: "user.signup",
+		UserID:    userID,
+	})
+
 	return CreatedUser{
 		ID:    userID,
 		Name:  prepared.Name,
@@ -86,6 +91,10 @@ func Login(ctx context.Context, db *sql.DB, in LoginInput) (CreatedUser, error) 
 		validated.Email,
 	).Scan(&user.ID, &user.Name, &user.Email, &hashedPassword, &disabledAt)
 	if err == sql.ErrNoRows {
+		WriteAuditEvent(ctx, db, AuditEventInput{
+			EventType: "auth.login_failed",
+			Metadata:  map[string]any{"email": validated.Email},
+		})
 		return CreatedUser{}, NewAuthenticationError("invalid email or password")
 	}
 	if err != nil {
@@ -93,10 +102,18 @@ func Login(ctx context.Context, db *sql.DB, in LoginInput) (CreatedUser, error) 
 	}
 
 	if disabledAt.Valid {
+		WriteAuditEvent(ctx, db, AuditEventInput{
+			EventType: "auth.login_failed",
+			UserID:    user.ID,
+		})
 		return CreatedUser{}, NewAuthenticationError("invalid email or password")
 	}
 
 	if !VerifyPassword(hashedPassword, validated.Password) {
+		WriteAuditEvent(ctx, db, AuditEventInput{
+			EventType: "auth.login_failed",
+			UserID:    user.ID,
+		})
 		return CreatedUser{}, NewAuthenticationError("invalid email or password")
 	}
 
@@ -195,6 +212,18 @@ func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, jwtSe
 	if err := tx.Commit(); err != nil {
 		return LoginResult{}, fmt.Errorf("failed to commit transaction: %w", err)
 	}
+
+	WriteAuditEvent(ctx, db, AuditEventInput{
+		EventType: "auth.login_success",
+		UserID:    user.ID,
+		SessionID: session.ID,
+	})
+
+	WriteAuditEvent(ctx, db, AuditEventInput{
+		EventType: "auth.login_alert_queued",
+		UserID:    user.ID,
+		SessionID: session.ID,
+	})
 
 	accessToken, err := GenerateAccessToken(jwtSecret, user.ID, session.ID, accessLifetime)
 	if err != nil {

@@ -81,6 +81,14 @@ func TestSignupCreatesUser(t *testing.T) {
 	if !VerifyPassword(hashedPassword, "password123") {
 		t.Error("stored password must verify against original password")
 	}
+
+	var eventCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events WHERE event_type = 'user.signup' AND user_id = $1`, user.ID,
+	).Scan(&eventCount)
+	if eventCount != 1 {
+		t.Errorf("user.signup audit event count = %d, want 1", eventCount)
+	}
 }
 
 func TestSignupAssignsDefaultRole(t *testing.T) {

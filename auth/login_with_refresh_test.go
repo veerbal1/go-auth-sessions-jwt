@@ -96,6 +96,26 @@ func TestLoginWithRefreshTokenSuccess(t *testing.T) {
 	if err == nil {
 		t.Error("wrong secret must fail verification")
 	}
+
+	var successCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.login_success' AND user_id = $1 AND session_id = $2`,
+		result.UserID, result.SessionID,
+	).Scan(&successCount)
+	if successCount != 1 {
+		t.Errorf("auth.login_success audit event count = %d, want 1", successCount)
+	}
+
+	var alertCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.login_alert_queued' AND user_id = $1 AND session_id = $2`,
+		result.UserID, result.SessionID,
+	).Scan(&alertCount)
+	if alertCount != 1 {
+		t.Errorf("auth.login_alert_queued audit event count = %d, want 1", alertCount)
+	}
 }
 
 func TestLoginWithRefreshTokenWrongPassword(t *testing.T) {
