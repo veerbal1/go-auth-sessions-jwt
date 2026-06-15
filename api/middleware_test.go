@@ -281,7 +281,7 @@ func TestRequireAuthInvalidJWT(t *testing.T) {
 	}
 }
 
-func TestRequireAuthBearerPreferredWhenCookiePresent(t *testing.T) {
+func TestRequireAuthBearerTokenWithoutCookie(t *testing.T) {
 	db := testDB(t)
 
 	email := uniqueEmail()
