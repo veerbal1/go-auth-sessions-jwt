@@ -1,0 +1,61 @@
+package auth
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
+
+type CreatedUser struct {
+	ID    string
+	Name  string
+	Email string
+}
+
+func Signup(ctx context.Context, db *sql.DB, in SignInSignUpParameters) (CreatedUser, error) {
+	prepared, err := PrepareSignup(in)
+	if err != nil {
+		return CreatedUser{}, err
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return CreatedUser{}, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var userID string
+	err = tx.QueryRowContext(ctx,
+		`INSERT INTO users (name, email, hashed_password) VALUES ($1, $2, $3) RETURNING id`,
+		prepared.Name, prepared.Email, prepared.HashedPassword,
+	).Scan(&userID)
+	if err != nil {
+		return CreatedUser{}, fmt.Errorf("failed to insert user: %w", err)
+	}
+
+	var roleID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT id FROM roles WHERE name = 'user'`,
+	).Scan(&roleID)
+	if err != nil {
+		return CreatedUser{}, fmt.Errorf("failed to find user role: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
+		userID, roleID,
+	)
+	if err != nil {
+		return CreatedUser{}, fmt.Errorf("failed to assign role: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return CreatedUser{}, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return CreatedUser{
+		ID:    userID,
+		Name:  prepared.Name,
+		Email: prepared.Email,
+	}, nil
+}
