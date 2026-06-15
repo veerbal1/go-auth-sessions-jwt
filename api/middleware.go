@@ -130,3 +130,38 @@ func extractToken(r *http.Request) string {
 
 	return ""
 }
+
+func RequireRole(db *sql.DB, requiredRole string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := GetUser(r.Context())
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "not authenticated")
+				return
+			}
+
+			for _, role := range user.Roles {
+				if role == requiredRole {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			if _, err := auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+				EventType: "auth.access_denied",
+				UserID:    user.UserID,
+				SessionID: user.SessionID,
+				Metadata: map[string]any{
+					"reason":     "insufficient role",
+					"required":   requiredRole,
+					"user_roles": user.Roles,
+				},
+			}); err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+
+			writeError(w, http.StatusForbidden, "access denied")
+		})
+	}
+}
