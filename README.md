@@ -1,10 +1,10 @@
 # Auth Lab
 
-A production-grade authentication system built in Go. Not a tutorial project — a complete auth lifecycle with server-side sessions, short-lived JWTs, hashed refresh tokens, rotation with reuse detection, session revocation, role-based access control, and a full audit trail.
+A production-grade authentication system built in Go — server-side sessions, short-lived JWTs, hashed refresh tokens, rotation with reuse detection, session revocation, role-based access control, and a full audit trail.
 
-## Why This Exists
+## Overview
 
-Most auth tutorials stop at "login returns a JWT." Real systems need to answer harder questions: is this session still valid? Was this refresh token stolen and replayed? Can this user access this route? How do we revoke access? What happened in this security event? Auth Lab models the full lifecycle and proves it correct under failure and edge cases — with integration tests against a real Postgres database.
+Real auth systems need to answer hard questions: is this session still valid? Was this refresh token stolen and replayed? Can this user access this route? How do we revoke access? What happened in this security event? Auth Lab answers all of them — with integration tests against a real Postgres database.
 
 ## Quick Highlights
 
@@ -33,7 +33,7 @@ Client
   └── GET  /admin/users     → [RequireAuth] → [RequireRole("admin")] → list all users
 
 Postgres (source of truth): users, roles, sessions, refresh tokens, audit events, email outbox
-Redis (planned): rate-limiting counters, optional session cache
+Redis (optional): rate-limiting counters, session cache
 ```
 
 ## Tech Stack
@@ -125,7 +125,7 @@ logout  →  session revoked  →  all refresh tokens revoked  →  cookies clea
 | Session revocation bypass | `revoked_at` checked on every protected request | Depends on RequireAuth wrapping all routes |
 | Privilege escalation | `RequireRole` loads roles from DB per request; 403 | Coarse user/admin RBAC only |
 | Disabled user access | `disabled_at` checked in login, refresh, and every request | No bulk session-revoke-on-disable |
-| Brute-force login | Full audit trail; rate-limit design ready for Redis | Rate limiting deferred to Stage 04B |
+| Brute-force login | Full audit trail; rate-limit design ready for Redis | Rate limiting not yet implemented |
 
 ### Rate Limiting (Designed, Not Yet Implemented)
 
