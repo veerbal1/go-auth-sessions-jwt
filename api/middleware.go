@@ -26,21 +26,27 @@ func RequireAuth(db *sql.DB, jwtSecret []byte) func(http.Handler) http.Handler {
 
 			var sessionRevoked sql.NullTime
 			var sessionExpires time.Time
+			var userDisabled sql.NullTime
 			var name, email string
 
 			err = db.QueryRowContext(r.Context(),
-				`SELECT u.name, u.email, s.expires_at, s.revoked_at
+				`SELECT u.name, u.email, s.expires_at, s.revoked_at, u.disabled_at
 				 FROM sessions s
 				 JOIN users u ON u.id = s.user_id
 				 WHERE s.id = $1 AND s.user_id = $2`,
 				claims.SessionID, claims.UserID,
-			).Scan(&name, &email, &sessionExpires, &sessionRevoked)
+			).Scan(&name, &email, &sessionExpires, &sessionRevoked, &userDisabled)
 			if err == sql.ErrNoRows {
 				writeError(w, http.StatusUnauthorized, "session not found")
 				return
 			}
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+
+			if userDisabled.Valid {
+				writeError(w, http.StatusUnauthorized, "invalid email or password")
 				return
 			}
 
