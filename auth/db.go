@@ -212,3 +212,34 @@ func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, jwtSe
 		AccessToken:      accessToken,
 	}, nil
 }
+
+func RevokeSession(ctx context.Context, db *sql.DB, sessionID string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx,
+		`UPDATE sessions SET revoked_at = now(), revoke_reason = 'logout' WHERE id = $1`,
+		sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked_at = now(), revoke_reason = 'logout'
+		 WHERE session_id = $1 AND revoked_at IS NULL`,
+		sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh tokens: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit revocation: %w", err)
+	}
+
+	return nil
+}
