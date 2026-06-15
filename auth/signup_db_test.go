@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,5 +136,33 @@ func TestSignupDuplicateEmailFails(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("duplicate email must return error")
+	}
+}
+
+func TestSignupMixedCaseDuplicateEmailFails(t *testing.T) {
+	db := testDB(t)
+
+	mixedEmail := fmt.Sprintf("Mixed-%d@Example.com", time.Now().UnixNano())
+
+	user, err := Signup(context.Background(), db, SignInSignUpParameters{
+		Name:     "First",
+		Email:    mixedEmail,
+		Password: "password123",
+	})
+	if err != nil {
+		t.Fatalf("first Signup failed: %v", err)
+	}
+	defer func() {
+		db.ExecContext(context.Background(), `DELETE FROM users WHERE id = $1`, user.ID)
+	}()
+
+	lowerEmail := strings.ToLower(mixedEmail)
+	_, err = Signup(context.Background(), db, SignInSignUpParameters{
+		Name:     "Second",
+		Email:    lowerEmail,
+		Password: "password456",
+	})
+	if err == nil {
+		t.Errorf("mixed-case duplicate must fail: %q and %q", mixedEmail, lowerEmail)
 	}
 }
