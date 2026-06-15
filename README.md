@@ -61,6 +61,21 @@ A simple "login gives JWT" project is not enough. This project should prove that
 
 Build this first. Do not add Redis until these invariants pass.
 
+### Threat Model v1
+
+
+| Threat                         | Defense                                                                                                                             | Remaining Limitation                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Stolen password                | Bcrypt hashing; plaintext never stored                                                                                              | Weak passwords still crackable offline; no 2FA                                                                      |
+| Stolen access token            | Short-lived JWT (15 min); HttpOnly cookie; RequireAuth checks DB session on every request                                           | JWT signature remains cryptographically valid until expiry; external JWT-only consumers would not see DB revocation |
+| Stolen refresh token           | Single-use rotation; reuse detection revokes entire session/token family                                                            | Window between theft and rotation still open until legitimate client rotates                                        |
+| Refresh-token replay           | Guarded UPDATE checks `used_at IS NULL` atomically; second caller triggers revocation of session + all tokens                       | Concurrent race before first rotation is still small but non-zero                                                   |
+| Logout/session revocation      | Server-side `revoked_at` timestamp on session + all associated refresh tokens; cookies cleared; RequireAuth checks DB every request | Depends on every protected route using RequireAuth; external JWT-only consumers would not see DB revocation         |
+| Normal user trying admin route | `RequireRole("admin")` middleware loads roles from DB each request; returns 403; audit event written                                | Only coarse user/admin RBAC exists; no fine-grained permissions yet                                                 |
+| Disabled user                  | `disabled_at` checked in Login, RequireAuth, and refresh flows each request; generic error returned                                 | No automatic "revoke all sessions on disable" helper yet; must revoke separately                                    |
+| Brute-force login attempts     | `auth.login_failed` audit in Postgres; abuse-limit design documented for Redis layer (Stage 04B)                                    | No rate limiting yet in Stage 04A; only detectable after the fact via audit trail                                   |
+
+
 ### Schema Plan
 
 Plan migrations for:
@@ -133,12 +148,26 @@ Postgres remains permanent truth for:
 1. Add Redis as a local dependency.
 2. Add login failure counters with TTLs.
 3. Use separate keys for:
-   - email hash
-   - IP hash
-   - email hash + IP hash
+  - email hash
+  - IP hash
+  - email hash + IP hash
 4. Keep long-term audit history in Postgres.
 5. Optional: add active-session cache.
 6. On logout/revocation, update Postgres first, then delete Redis session cache key.
+
+### Abuse-Limit Design
+
+Three rate-limit keys, all stored in Redis with TTLs:
+
+
+| Key                     | Counts                            | Why                                                 | TTL                               | Exceeded                                              |
+| ----------------------- | --------------------------------- | --------------------------------------------------- | --------------------------------- | ----------------------------------------------------- |
+| `login:email:<hash>`    | Failed attempts per account       | Protects one account from password guessing         | Resets after window (e.g. 15 min) | Block logins for that email until TTL expires         |
+| `login:ip:<hash>`       | Failed attempts per IP            | Protects the service from one abusive source        | Resets after window (e.g. 15 min) | Block all logins from that IP until TTL expires       |
+| `login:email_ip:<hash>` | Failed attempts per email+IP pair | Catches one source attacking one account repeatedly | Resets after window (e.g. 15 min) | Block logins for that email+IP pair until TTL expires |
+
+
+Redis counters are temporary rate-limiting state. Postgres `audit_events` keeps permanent, immutable evidence of every `auth.login_failed` — Redis can be flushed without losing security history.
 
 ## API Shape
 
@@ -155,41 +184,23 @@ Exact request/response JSON can evolve as each slice is built.
 
 ## Done Checklist
 
-- [ ] README and threat model v1 exist.
-- [ ] Migrations run from empty database.
-- [ ] Signup works.
-- [ ] Login works and creates a session.
-- [ ] New-login alert is queued in `email_outbox`.
-- [ ] Access token is short-lived.
-- [ ] Refresh token is stored only as a hash.
-- [ ] Refresh token family is modeled.
-- [ ] Refresh rotation works.
-- [ ] Refresh reuse detection revokes the session/token family.
-- [ ] Logout invalidates server-side state.
-- [ ] `GET /me` requires auth.
-- [ ] `GET /admin/users` requires admin role.
-- [ ] Audit events exist for sensitive auth actions.
-- [ ] Abuse-limit design is documented.
-- [ ] Stage 04A tests pass.
+- [x] README and threat model v1 exist.
+- [x] Migrations run from empty database.
+- [x] Signup works.
+- [x] Login works and creates a session.
+- [x] New-login alert is queued in `email_outbox`.
+- [x] Access token is short-lived.
+- [x] Refresh token is stored only as a hash.
+- [x] Refresh token family is modeled.
+- [x] Refresh rotation works.
+- [x] Refresh reuse detection revokes the session/token family.
+- [x] Logout invalidates server-side state.
+- [x] `GET /me` requires auth.
+- [x] `GET /admin/users` requires admin role.
+- [x] Audit events exist for sensitive auth actions.
+- [x] Abuse-limit design is documented.
+- [x] Stage 04A tests pass.
 - [ ] Stage 04B Redis hardening is added after Stage 04A, or explicitly deferred.
-
-## Public Posting Ideas
-
-```text
-Week 07 of becoming a Go backend/platform engineer.
-
-Built:
-- A production-style local auth system in Go.
-- Users, roles, sessions, new-login security alerts, short-lived JWT access tokens, hashed refresh-token families, token rotation, reuse detection, RBAC route protection, and audit logs.
-
-Learned:
-- Auth is a lifecycle, not just a login endpoint.
-- Postgres is the source of truth.
-- Redis belongs later as a speed/protection layer.
-
-Hard part:
-- Modelling refresh token rotation cleanly: old token used once, new token linked into the same token family, replay detected later, then the session is revoked.
-```
 
 ## First Tiny Task
 
