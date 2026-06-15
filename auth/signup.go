@@ -36,3 +36,27 @@ func ValidateSignup(in SignInSignUpParameters) (SignInSignUpParameters, error) {
 		Password: in.Password,
 	}, nil
 }
+
+type PreparedSignup struct {
+	Name           string
+	Email          string
+	HashedPassword string
+}
+
+func PrepareSignup(in SignInSignUpParameters) (PreparedSignup, error) {
+	validated, err := ValidateSignup(in)
+	if err != nil {
+		return PreparedSignup{}, err
+	}
+
+	hash, err := HashPassword(validated.Password)
+	if err != nil {
+		return PreparedSignup{}, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	return PreparedSignup{
+		Name:           validated.Name,
+		Email:          validated.Email,
+		HashedPassword: hash,
+	}, nil
+}
