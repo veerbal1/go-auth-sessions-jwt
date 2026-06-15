@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
+	"auth-lab/api"
 	"database/sql"
 	_ "github.com/lib/pq"
 )
@@ -30,4 +32,20 @@ func main() {
 	}
 
 	log.Println("connected to Postgres successfully")
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/signup", api.SignupHandler(db))
+
+	addr := ":" + envOrDefault("PORT", "8080")
+	log.Printf("server starting on %s", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("server failed: %v", err)
+	}
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
