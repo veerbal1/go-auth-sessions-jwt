@@ -43,6 +43,7 @@ func main() {
 	mux.HandleFunc("POST /api/v1/login", api.LoginHandler(db, []byte(jwtSecret)))
 	// Handle (not HandleFunc) because RequireAuth returns http.Handler, not a bare func
 	mux.Handle("GET /api/v1/me", api.RequireAuth(db, []byte(jwtSecret))(api.MeHandler()))
+	mux.HandleFunc("POST /api/v1/refresh", api.RefreshHandler(db, []byte(jwtSecret)))
 
 	addr := ":" + envOrDefault("PORT", "8080")
 	log.Printf("server starting on %s", addr)
