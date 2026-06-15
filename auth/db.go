@@ -176,6 +176,10 @@ func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, sessi
 		return LoginResult{}, fmt.Errorf("failed to create refresh token: %w", err)
 	}
 
+	if _, err := QueueNewLoginAlert(ctx, db, user.ID, user.Email); err != nil {
+		return LoginResult{}, fmt.Errorf("failed to queue email alert: %w", err)
+	}
+
 	return LoginResult{
 		UserID:           user.ID,
 		Name:             user.Name,

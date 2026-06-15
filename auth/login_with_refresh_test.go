@@ -66,6 +66,14 @@ func TestLoginWithRefreshTokenSuccess(t *testing.T) {
 	if dbTokenHash != expectedHash {
 		t.Error("DB stored hash must match sha256 of raw token")
 	}
+
+	var emailCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM email_outbox WHERE user_id = $1`, result.UserID,
+	).Scan(&emailCount)
+	if emailCount != 1 {
+		t.Errorf("exactly 1 email outbox row must be created, got %d", emailCount)
+	}
 }
 
 func TestLoginWithRefreshTokenWrongPassword(t *testing.T) {
@@ -114,6 +122,14 @@ func TestLoginWithRefreshTokenWrongPassword(t *testing.T) {
 	).Scan(&tokenCount)
 	if tokenCount != 0 {
 		t.Errorf("no refresh token must be created, got %d", tokenCount)
+	}
+
+	var emailCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM email_outbox WHERE user_id = $1`, user.ID,
+	).Scan(&emailCount)
+	if emailCount != 0 {
+		t.Errorf("no email outbox row must be created, got %d", emailCount)
 	}
 }
 
@@ -164,5 +180,13 @@ func TestLoginWithRefreshTokenDisabledUser(t *testing.T) {
 	).Scan(&tokenCount)
 	if tokenCount != 0 {
 		t.Errorf("no refresh token must be created, got %d", tokenCount)
+	}
+
+	var emailCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM email_outbox WHERE user_id = $1`, user.ID,
+	).Scan(&emailCount)
+	if emailCount != 0 {
+		t.Errorf("no email outbox row must be created, got %d", emailCount)
 	}
 }
