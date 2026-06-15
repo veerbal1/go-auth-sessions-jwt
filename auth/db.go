@@ -304,3 +304,30 @@ func RevokeSession(ctx context.Context, db *sql.DB, sessionID string) error {
 
 	return nil
 }
+
+func LoadUserRoles(ctx context.Context, db *sql.DB, userID string) ([]string, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT r.name FROM roles r
+		 JOIN user_roles ur ON ur.role_id = r.id
+		 WHERE ur.user_id = $1`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load user roles: %w", err)
+	}
+	defer rows.Close()
+
+	var roles []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, fmt.Errorf("failed to scan role: %w", err)
+		}
+		roles = append(roles, role)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate roles: %w", err)
+	}
+
+	return roles, nil
+}
