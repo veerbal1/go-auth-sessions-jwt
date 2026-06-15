@@ -97,6 +97,14 @@ func TestRequireAuthCookieToken(t *testing.T) {
 		t.Error("response must not contain access_token")
 	}
 
+	found := make(map[string]bool)
+	for _, r := range resp.Roles {
+		found[r] = true
+	}
+	if !found["user"] {
+		t.Error("roles must contain 'user'")
+	}
+
 	db.ExecContext(context.Background(), `DELETE FROM users WHERE email = $1`, email)
 }
 

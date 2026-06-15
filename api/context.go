@@ -11,6 +11,7 @@ type UserInfo struct {
 	Name      string
 	Email     string
 	SessionID string
+	Roles     []string
 }
 
 func SetUser(ctx context.Context, u UserInfo) context.Context {

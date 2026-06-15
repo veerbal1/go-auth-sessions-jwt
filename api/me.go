@@ -6,10 +6,11 @@ import (
 )
 
 type meResponse struct {
-	UserID    string `json:"user_id"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	SessionID string `json:"session_id"`
+	UserID    string   `json:"user_id"`
+	Name      string   `json:"name"`
+	Email     string   `json:"email"`
+	SessionID string   `json:"session_id"`
+	Roles     []string `json:"roles"`
 }
 
 func MeHandler() http.HandlerFunc {
@@ -20,12 +21,18 @@ func MeHandler() http.HandlerFunc {
 			return
 		}
 
+		roles := user.Roles
+		if roles == nil {
+			roles = []string{}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(meResponse{
 			UserID:    user.UserID,
 			Name:      user.Name,
 			Email:     user.Email,
 			SessionID: user.SessionID,
+			Roles:     roles,
 		})
 	}
 }

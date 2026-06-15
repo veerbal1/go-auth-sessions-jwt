@@ -96,11 +96,21 @@ func RequireAuth(db *sql.DB, jwtSecret []byte) func(http.Handler) http.Handler {
 				return
 			}
 
+			roles, err := auth.LoadUserRoles(r.Context(), db, claims.UserID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if roles == nil {
+				roles = []string{}
+			}
+
 			ctx := SetUser(r.Context(), UserInfo{
 				UserID:    claims.UserID,
 				Name:      name,
 				Email:     email,
 				SessionID: claims.SessionID,
+				Roles:     roles,
 			})
 
 			next.ServeHTTP(w, r.WithContext(ctx))
