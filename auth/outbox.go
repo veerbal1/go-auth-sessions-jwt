@@ -2,11 +2,10 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 )
 
-func QueueNewLoginAlert(ctx context.Context, db *sql.DB, userID, recipientEmail string) (string, error) {
+func QueueNewLoginAlert(ctx context.Context, db Querier, userID, recipientEmail string) (string, error) {
 	subject := "New login to your account"
 	body := "A new login session was created. If this was not you, change your password."
 

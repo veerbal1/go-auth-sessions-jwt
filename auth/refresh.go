@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -31,7 +30,7 @@ type CreatedRefreshToken struct {
 	ExpiresAt time.Time
 }
 
-func CreateRefreshToken(ctx context.Context, db *sql.DB, sessionID string, lifetime time.Duration) (CreatedRefreshToken, error) {
+func CreateRefreshToken(ctx context.Context, db Querier, sessionID string, lifetime time.Duration) (CreatedRefreshToken, error) {
 	raw, err := GenerateRefreshToken()
 	if err != nil {
 		return CreatedRefreshToken{}, err

@@ -190,3 +190,77 @@ func TestLoginWithRefreshTokenDisabledUser(t *testing.T) {
 		t.Errorf("no email outbox row must be created, got %d", emailCount)
 	}
 }
+
+func TestLoginWithRefreshTokenRollback(t *testing.T) {
+	db := testDB(t)
+
+	email := uniqueEmail()
+	password := "password123"
+
+	user, err := Signup(context.Background(), db, SignInSignUpParameters{
+		Name:     "Rollback Test",
+		Email:    email,
+		Password: password,
+	})
+	if err != nil {
+		t.Fatalf("Signup failed: %v", err)
+	}
+	defer func() {
+		db.ExecContext(context.Background(), `DELETE FROM users WHERE id = $1`, user.ID)
+	}()
+
+	_, err = Login(context.Background(), db, LoginInput{
+		Email:    email,
+		Password: password,
+	})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+
+	session, err := CreateSession(context.Background(), tx, user.ID, 15*time.Minute, "", "")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	_, err = CreateRefreshToken(context.Background(), tx, session.ID, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("CreateRefreshToken failed: %v", err)
+	}
+
+	_, err = QueueNewLoginAlert(context.Background(), tx, user.ID, user.Email)
+	if err != nil {
+		t.Fatalf("QueueNewLoginAlert failed: %v", err)
+	}
+
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback failed: %v", err)
+	}
+
+	var rollbackSessionCount, rollbackTokenCount, rollbackEmailCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM sessions WHERE user_id = $1`, user.ID,
+	).Scan(&rollbackSessionCount)
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM refresh_tokens rt
+		 JOIN sessions s ON s.id = rt.session_id
+		 WHERE s.user_id = $1`, user.ID,
+	).Scan(&rollbackTokenCount)
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM email_outbox WHERE user_id = $1`, user.ID,
+	).Scan(&rollbackEmailCount)
+
+	if rollbackSessionCount != 0 {
+		t.Errorf("rollback must remove session, got %d", rollbackSessionCount)
+	}
+	if rollbackTokenCount != 0 {
+		t.Errorf("rollback must remove refresh token, got %d", rollbackTokenCount)
+	}
+	if rollbackEmailCount != 0 {
+		t.Errorf("rollback must remove email outbox, got %d", rollbackEmailCount)
+	}
+}

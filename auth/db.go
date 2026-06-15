@@ -9,6 +9,11 @@ import (
 	"github.com/lib/pq"
 )
 
+type Querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 type CreatedUser struct {
 	ID    string
 	Name  string
@@ -103,7 +108,7 @@ type CreatedSession struct {
 	ExpiresAt time.Time
 }
 
-func CreateSession(ctx context.Context, db *sql.DB, userID string, lifetime time.Duration, userAgent, ipHash string) (CreatedSession, error) {
+func CreateSession(ctx context.Context, db Querier, userID string, lifetime time.Duration, userAgent, ipHash string) (CreatedSession, error) {
 	expiresAt := time.Now().Add(lifetime)
 
 	var sessionID string
@@ -166,18 +171,28 @@ func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, sessi
 		return LoginResult{}, err
 	}
 
-	session, err := CreateSession(ctx, db, user.ID, sessionLifetime, userAgent, ipHash)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	session, err := CreateSession(ctx, tx, user.ID, sessionLifetime, userAgent, ipHash)
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	refresh, err := CreateRefreshToken(ctx, db, session.ID, refreshLifetime)
+	refresh, err := CreateRefreshToken(ctx, tx, session.ID, refreshLifetime)
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("failed to create refresh token: %w", err)
 	}
 
-	if _, err := QueueNewLoginAlert(ctx, db, user.ID, user.Email); err != nil {
+	if _, err := QueueNewLoginAlert(ctx, tx, user.ID, user.Email); err != nil {
 		return LoginResult{}, fmt.Errorf("failed to queue email alert: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return LoginResult{}, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return LoginResult{
