@@ -25,11 +25,14 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+		if _, err := auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
 			EventType: "auth.logout",
 			UserID:    user.UserID,
 			SessionID: user.SessionID,
-		})
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 
 		http.SetCookie(w, &http.Cookie{
 			Name:     "access_token",
