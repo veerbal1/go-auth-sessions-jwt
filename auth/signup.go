@@ -14,20 +14,20 @@ type SignInSignUpParameters struct {
 func ValidateSignup(in SignInSignUpParameters) (SignInSignUpParameters, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return SignInSignUpParameters{}, fmt.Errorf("name must not be empty")
+		return SignInSignUpParameters{}, NewValidationError("name must not be empty")
 	}
 
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		return SignInSignUpParameters{}, fmt.Errorf("email must not be empty")
+		return SignInSignUpParameters{}, NewValidationError("email must not be empty")
 	}
 	email = strings.ToLower(email)
 
 	if strings.TrimSpace(in.Password) == "" {
-		return SignInSignUpParameters{}, fmt.Errorf("password must not be empty")
+		return SignInSignUpParameters{}, NewValidationError("password must not be empty")
 	}
 	if len(in.Password) < 8 {
-		return SignInSignUpParameters{}, fmt.Errorf("password must be at least 8 characters")
+		return SignInSignUpParameters{}, NewValidationError("password must be at least 8 characters")
 	}
 
 	return SignInSignUpParameters{

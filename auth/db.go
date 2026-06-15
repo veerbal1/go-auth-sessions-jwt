@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/lib/pq"
 )
 
 type CreatedUser struct {
@@ -30,6 +32,9 @@ func Signup(ctx context.Context, db *sql.DB, in SignInSignUpParameters) (Created
 		prepared.Name, prepared.Email, prepared.HashedPassword,
 	).Scan(&userID)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return CreatedUser{}, NewConflictError("email already registered")
+		}
 		return CreatedUser{}, fmt.Errorf("failed to insert user: %w", err)
 	}
 
