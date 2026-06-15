@@ -18,6 +18,11 @@ func main() {
 		log.Fatal("DATABASE_URL is not set")
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
+
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
@@ -35,6 +40,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/signup", api.SignupHandler(db))
+	mux.HandleFunc("POST /api/v1/login", api.LoginHandler(db, []byte(jwtSecret)))
 
 	addr := ":" + envOrDefault("PORT", "8080")
 	log.Printf("server starting on %s", addr)
