@@ -261,6 +261,17 @@ func RevokeSession(ctx context.Context, db *sql.DB, sessionID string) error {
 	}
 	defer tx.Rollback()
 
+	var userID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT user_id FROM sessions WHERE id = $1`, sessionID,
+	).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("session not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
 	_, err = tx.ExecContext(ctx,
 		`UPDATE sessions SET revoked_at = now(), revoke_reason = 'logout' WHERE id = $1`,
 		sessionID,
@@ -276,6 +287,15 @@ func RevokeSession(ctx context.Context, db *sql.DB, sessionID string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to revoke refresh tokens: %w", err)
+	}
+
+	if _, err := WriteAuditEvent(ctx, tx, AuditEventInput{
+		EventType: "auth.session_revoked",
+		UserID:    userID,
+		SessionID: sessionID,
+		Metadata:  map[string]any{"reason": "logout"},
+	}); err != nil {
+		return fmt.Errorf("failed to write audit event: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

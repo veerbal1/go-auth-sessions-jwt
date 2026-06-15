@@ -37,6 +37,12 @@ func RequireAuth(db *sql.DB, jwtSecret []byte) func(http.Handler) http.Handler {
 				claims.SessionID, claims.UserID,
 			).Scan(&name, &email, &sessionExpires, &sessionRevoked, &userDisabled)
 			if err == sql.ErrNoRows {
+				auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+					EventType: "auth.access_denied",
+					UserID:    claims.UserID,
+					SessionID: claims.SessionID,
+					Metadata:  map[string]any{"reason": "session not found"},
+				})
 				writeError(w, http.StatusUnauthorized, "session not found")
 				return
 			}
@@ -46,16 +52,34 @@ func RequireAuth(db *sql.DB, jwtSecret []byte) func(http.Handler) http.Handler {
 			}
 
 			if userDisabled.Valid {
+				auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+					EventType: "auth.access_denied",
+					UserID:    claims.UserID,
+					SessionID: claims.SessionID,
+					Metadata:  map[string]any{"reason": "user disabled"},
+				})
 				writeError(w, http.StatusUnauthorized, "invalid email or password")
 				return
 			}
 
 			if sessionRevoked.Valid {
+				auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+					EventType: "auth.access_denied",
+					UserID:    claims.UserID,
+					SessionID: claims.SessionID,
+					Metadata:  map[string]any{"reason": "session revoked"},
+				})
 				writeError(w, http.StatusUnauthorized, "session has been revoked")
 				return
 			}
 
 			if sessionExpires.Before(time.Now()) {
+				auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+					EventType: "auth.access_denied",
+					UserID:    claims.UserID,
+					SessionID: claims.SessionID,
+					Metadata:  map[string]any{"reason": "session expired"},
+				})
 				writeError(w, http.StatusUnauthorized, "session has expired")
 				return
 			}

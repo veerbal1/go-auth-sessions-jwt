@@ -180,6 +180,17 @@ func TestRequireAuthRevokedSession(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for revoked session, got %d", rec.Code)
 	}
+
+	var auditCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.access_denied' AND session_id = $1
+		 AND metadata->>'reason' = 'session revoked'`,
+		result.SessionID,
+	).Scan(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("auth.access_denied audit count = %d, want 1", auditCount)
+	}
 }
 
 func TestRequireAuthExpiredSession(t *testing.T) {
@@ -222,6 +233,17 @@ func TestRequireAuthExpiredSession(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for expired session, got %d", rec.Code)
 	}
+
+	var auditCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.access_denied' AND session_id = $1
+		 AND metadata->>'reason' = 'session expired'`,
+		result.SessionID,
+	).Scan(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("auth.access_denied audit count = %d, want 1", auditCount)
+	}
 }
 
 func TestRequireAuthDisabledUser(t *testing.T) {
@@ -263,6 +285,17 @@ func TestRequireAuthDisabledUser(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for disabled user, got %d", rec.Code)
+	}
+
+	var auditCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.access_denied' AND user_id = $1
+		 AND metadata->>'reason' = 'user disabled'`,
+		user.ID,
+	).Scan(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("auth.access_denied audit count = %d, want 1", auditCount)
 	}
 }
 

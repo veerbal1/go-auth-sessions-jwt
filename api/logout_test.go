@@ -55,6 +55,19 @@ func TestLogoutHandlerSuccess(t *testing.T) {
 	if resp.Message == "" {
 		t.Error("response must have a message")
 	}
+
+	claims, _ := auth.VerifyAccessToken(testJWTSecret(), accessCookie.Value)
+	if claims != nil {
+		var auditCount int
+		db.QueryRowContext(context.Background(),
+			`SELECT COUNT(*) FROM audit_events
+			 WHERE event_type = 'auth.logout' AND user_id = $1 AND session_id = $2`,
+			claims.UserID, claims.SessionID,
+		).Scan(&auditCount)
+		if auditCount != 1 {
+			t.Errorf("auth.logout audit count = %d, want 1", auditCount)
+		}
+	}
 }
 
 func TestLogoutThenMeFails(t *testing.T) {

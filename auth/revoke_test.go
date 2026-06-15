@@ -67,6 +67,16 @@ func TestRevokeSession(t *testing.T) {
 	if refreshRevokeReason.String != "logout" {
 		t.Errorf("refresh revoke_reason = %q, want %q", refreshRevokeReason.String, "logout")
 	}
+
+	var auditCount int
+	db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audit_events
+		 WHERE event_type = 'auth.session_revoked' AND session_id = $1`,
+		result.SessionID,
+	).Scan(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("auth.session_revoked audit count = %d, want 1", auditCount)
+	}
 }
 
 func TestRevokeSessionIdempotent(t *testing.T) {

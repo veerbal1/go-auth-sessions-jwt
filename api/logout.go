@@ -25,6 +25,12 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		auth.WriteAuditEvent(r.Context(), db, auth.AuditEventInput{
+			EventType: "auth.logout",
+			UserID:    user.UserID,
+			SessionID: user.SessionID,
+		})
+
 		http.SetCookie(w, &http.Cookie{
 			Name:     "access_token",
 			Value:    "",
