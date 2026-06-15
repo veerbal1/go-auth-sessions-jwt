@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var testJWTSecret = []byte("test-jwt-secret")
+
 func TestLoginWithRefreshTokenSuccess(t *testing.T) {
 	db := testDB(t)
 
@@ -25,7 +27,7 @@ func TestLoginWithRefreshTokenSuccess(t *testing.T) {
 	result, err := LoginWithRefreshToken(context.Background(), db, LoginInput{
 		Email:    email,
 		Password: password,
-	}, 15*time.Minute, 7*24*time.Hour, "", "")
+	}, testJWTSecret, 15*time.Minute, 7*24*time.Hour, 15*time.Minute, "", "")
 	if err != nil {
 		t.Fatalf("LoginWithRefreshToken failed: %v", err)
 	}
@@ -74,6 +76,26 @@ func TestLoginWithRefreshTokenSuccess(t *testing.T) {
 	if emailCount != 1 {
 		t.Errorf("exactly 1 email outbox row must be created, got %d", emailCount)
 	}
+
+	if result.AccessToken == "" {
+		t.Error("AccessToken must not be empty")
+	}
+
+	claims, err := VerifyAccessToken(testJWTSecret, result.AccessToken)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken failed: %v", err)
+	}
+	if claims.UserID != result.UserID {
+		t.Errorf("claims.UserID = %q, want %q", claims.UserID, result.UserID)
+	}
+	if claims.SessionID != result.SessionID {
+		t.Errorf("claims.SessionID = %q, want %q", claims.SessionID, result.SessionID)
+	}
+
+	_, err = VerifyAccessToken([]byte("wrong-secret"), result.AccessToken)
+	if err == nil {
+		t.Error("wrong secret must fail verification")
+	}
 }
 
 func TestLoginWithRefreshTokenWrongPassword(t *testing.T) {
@@ -96,7 +118,7 @@ func TestLoginWithRefreshTokenWrongPassword(t *testing.T) {
 	_, err = LoginWithRefreshToken(context.Background(), db, LoginInput{
 		Email:    email,
 		Password: "wrongpassword",
-	}, 15*time.Minute, 7*24*time.Hour, "", "")
+	}, testJWTSecret, 15*time.Minute, 7*24*time.Hour, 15*time.Minute, "", "")
 
 	if err == nil {
 		t.Fatal("must fail for wrong password")
@@ -158,7 +180,7 @@ func TestLoginWithRefreshTokenDisabledUser(t *testing.T) {
 	_, err = LoginWithRefreshToken(context.Background(), db, LoginInput{
 		Email:    email,
 		Password: password,
-	}, 15*time.Minute, 7*24*time.Hour, "", "")
+	}, testJWTSecret, 15*time.Minute, 7*24*time.Hour, 15*time.Minute, "", "")
 
 	if err == nil {
 		t.Fatal("must fail for disabled user")

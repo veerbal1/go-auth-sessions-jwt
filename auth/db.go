@@ -163,9 +163,10 @@ type LoginResult struct {
 	SessionExpiresAt time.Time
 	RefreshToken     string
 	RefreshExpiresAt time.Time
+	AccessToken      string
 }
 
-func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, sessionLifetime, refreshLifetime time.Duration, userAgent, ipHash string) (LoginResult, error) {
+func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, jwtSecret []byte, sessionLifetime, refreshLifetime, accessLifetime time.Duration, userAgent, ipHash string) (LoginResult, error) {
 	user, err := Login(ctx, db, in)
 	if err != nil {
 		return LoginResult{}, err
@@ -195,6 +196,11 @@ func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, sessi
 		return LoginResult{}, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	accessToken, err := GenerateAccessToken(jwtSecret, user.ID, session.ID, accessLifetime)
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
 	return LoginResult{
 		UserID:           user.ID,
 		Name:             user.Name,
@@ -203,5 +209,6 @@ func LoginWithRefreshToken(ctx context.Context, db *sql.DB, in LoginInput, sessi
 		SessionExpiresAt: session.ExpiresAt,
 		RefreshToken:     refresh.RawToken,
 		RefreshExpiresAt: refresh.ExpiresAt,
+		AccessToken:      accessToken,
 	}, nil
 }
