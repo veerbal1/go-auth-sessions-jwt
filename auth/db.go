@@ -64,3 +64,35 @@ func Signup(ctx context.Context, db *sql.DB, in SignInSignUpParameters) (Created
 		Email: prepared.Email,
 	}, nil
 }
+
+func Login(ctx context.Context, db *sql.DB, in LoginInput) (CreatedUser, error) {
+	validated, err := ValidateLogin(in)
+	if err != nil {
+		return CreatedUser{}, err
+	}
+
+	var user CreatedUser
+	var hashedPassword string
+	var disabledAt sql.NullTime
+
+	err = db.QueryRowContext(ctx,
+		`SELECT id, name, email, hashed_password, disabled_at FROM users WHERE email = $1`,
+		validated.Email,
+	).Scan(&user.ID, &user.Name, &user.Email, &hashedPassword, &disabledAt)
+	if err == sql.ErrNoRows {
+		return CreatedUser{}, NewAuthenticationError("invalid email or password")
+	}
+	if err != nil {
+		return CreatedUser{}, fmt.Errorf("failed to find user: %w", err)
+	}
+
+	if disabledAt.Valid {
+		return CreatedUser{}, NewAuthenticationError("invalid email or password")
+	}
+
+	if !VerifyPassword(hashedPassword, validated.Password) {
+		return CreatedUser{}, NewAuthenticationError("invalid email or password")
+	}
+
+	return user, nil
+}

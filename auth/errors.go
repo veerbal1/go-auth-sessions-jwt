@@ -29,3 +29,15 @@ func (e *ConflictError) Error() string {
 func NewConflictError(msg string) error {
 	return &ConflictError{Message: msg}
 }
+
+type AuthenticationError struct {
+	Message string
+}
+
+func (e *AuthenticationError) Error() string {
+	return e.Message
+}
+
+func NewAuthenticationError(msg string) error {
+	return &AuthenticationError{Message: msg}
+}
