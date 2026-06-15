@@ -45,6 +45,7 @@ func main() {
 	mux.Handle("GET /api/v1/me", api.RequireAuth(db, []byte(jwtSecret))(api.MeHandler()))
 	mux.HandleFunc("POST /api/v1/refresh", api.RefreshHandler(db, []byte(jwtSecret)))
 	mux.Handle("POST /api/v1/logout", api.RequireAuth(db, []byte(jwtSecret))(api.LogoutHandler(db)))
+	mux.Handle("GET /api/v1/admin/users", api.RequireAuth(db, []byte(jwtSecret))(api.RequireRole(db, "admin")(api.AdminUsersHandler(db))))
 
 	addr := ":" + envOrDefault("PORT", "8080")
 	log.Printf("server starting on %s", addr)
