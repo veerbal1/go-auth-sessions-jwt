@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/lib/pq"
 )
@@ -95,4 +96,56 @@ func Login(ctx context.Context, db *sql.DB, in LoginInput) (CreatedUser, error) 
 	}
 
 	return user, nil
+}
+
+type CreatedSession struct {
+	ID        string
+	ExpiresAt time.Time
+}
+
+func CreateSession(ctx context.Context, db *sql.DB, userID string, lifetime time.Duration, userAgent, ipHash string) (CreatedSession, error) {
+	expiresAt := time.Now().Add(lifetime)
+
+	var sessionID string
+	err := db.QueryRowContext(ctx,
+		`INSERT INTO sessions (user_id, expires_at, user_agent, ip_hash)
+		 VALUES ($1, $2, $3, $4) RETURNING id`,
+		userID, expiresAt, userAgent, ipHash,
+	).Scan(&sessionID)
+	if err != nil {
+		return CreatedSession{}, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return CreatedSession{
+		ID:        sessionID,
+		ExpiresAt: expiresAt,
+	}, nil
+}
+
+type LoginWithSessionResult struct {
+	UserID    string
+	Name      string
+	Email     string
+	SessionID string
+	ExpiresAt time.Time
+}
+
+func LoginWithSession(ctx context.Context, db *sql.DB, in LoginInput, lifetime time.Duration, userAgent, ipHash string) (LoginWithSessionResult, error) {
+	user, err := Login(ctx, db, in)
+	if err != nil {
+		return LoginWithSessionResult{}, err
+	}
+
+	session, err := CreateSession(ctx, db, user.ID, lifetime, userAgent, ipHash)
+	if err != nil {
+		return LoginWithSessionResult{}, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return LoginWithSessionResult{
+		UserID:    user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		SessionID: session.ID,
+		ExpiresAt: session.ExpiresAt,
+	}, nil
 }
