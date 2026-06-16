@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -86,6 +87,9 @@ func LoginHandler(db *sql.DB, jwtSecret []byte, rdb *redis.Client) http.HandlerF
 
 		if rdb != nil {
 			if recErr := auth.RecordLoginSuccess(r.Context(), rdb, req.Email, clientIP); recErr != nil {
+				if revokeErr := auth.RevokeSession(r.Context(), db, result.SessionID); revokeErr != nil {
+					log.Printf("failed to revoke session %s after RecordLoginSuccess error: %v", result.SessionID, revokeErr)
+				}
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}

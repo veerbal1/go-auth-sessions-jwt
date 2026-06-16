@@ -30,10 +30,10 @@ Client
   ├── POST /api/v1/refresh  → validate refresh token → rotate → new JWT + new refresh token
   ├── POST /api/v1/logout   → revoke session + tokens → clear cookies
   ├── GET  /api/v1/me       → [RequireAuth] → return user info + roles
-  └── GET  /admin/users     → [RequireAuth] → [RequireRole("admin")] → list all users
+  └── GET  /api/v1/admin/users → [RequireAuth] → [RequireRole("admin")] → list all users
 
 Postgres (source of truth): users, roles, sessions, refresh tokens, audit events, email outbox
-Redis (optional): rate-limiting counters, session cache
+Redis (rate limiting): temporary live protection only — Postgres audit_events are the permanent security history
 ```
 
 ## Tech Stack
@@ -42,6 +42,7 @@ Redis (optional): rate-limiting counters, session cache
 |---|---|
 | Language | Go 1.26 |
 | Database | PostgreSQL 16 |
+| Cache | Redis 8 |
 | Migrations | golang-migrate |
 | Password hashing | golang.org/x/crypto/bcrypt |
 | JWT | golang-jwt/jwt/v5 (HS256) |
@@ -80,6 +81,8 @@ All errors return `{"error": "message"}` with appropriate HTTP status:
 - `401` — unauthenticated
 - `403` — insufficient role
 - `409` — conflict (duplicate email)
+- `429` — too many login attempts (rate-limited)
+- `500` — internal error (DB/Redis failure)
 - `405` — wrong method
 
 ## Database Schema
@@ -125,9 +128,9 @@ logout  →  session revoked  →  all refresh tokens revoked  →  cookies clea
 | Session revocation bypass | `revoked_at` checked on every protected request | Depends on RequireAuth wrapping all routes |
 | Privilege escalation | `RequireRole` loads roles from DB per request; 403 | Coarse user/admin RBAC only |
 | Disabled user access | `disabled_at` checked in login, refresh, and every request | No bulk session-revoke-on-disable |
-| Brute-force login | Full audit trail; rate-limit design ready for Redis | Rate limiting not yet implemented |
+| Brute-force login | Redis rate-limiting (email, IP, email+IP); full audit trail | Redis down = 500 fail-closed |
 
-### Rate Limiting (Designed, Not Yet Implemented)
+### Rate Limiting (Stage 04B — Implemented)
 
 Three Redis-backed counters with configurable TTLs:
 
@@ -137,12 +140,26 @@ Three Redis-backed counters with configurable TTLs:
 | `login:ip:<hash>` | The service from one IP | Block that IP |
 | `login:email_ip:<hash>` | Targeted attack on one account | Block that pair |
 
-Redis handles temporary rate limiting. Postgres `audit_events` provides permanent, immutable security history — even if Redis is flushed.
+**Limit**: 5 failed attempts per key within 15-minute TTL.
+
+#### Redis Failure Behavior (Fail-Closed)
+
+Redis is temporary live protection, not truth. Postgres remains the permanent source of truth for users, sessions, refresh tokens, roles, and audit events.
+
+| Scenario | Response |
+|---|---|
+| Redis unreachable at startup | Server exits (`log.Fatal`) |
+| CheckRateLimit Redis error (not rate-limited) | `500` — app can't determine if caller is blocked |
+| RecordLoginFailure Redis error | `500` — must count failures for security; silent skip would let an attacker brute-force through a Redis outage |
+| RecordLoginSuccess Redis error | `500` — counters can't be cleared, so a legitimate user would be locked out on next attempt; the newly-created Postgres session is revoked and **no cookies are issued** |
+| Successful login with disabled Redis (`rdb == nil`) | `200` — rate limiting is silently skipped (used by tests without Redis) |
+
+Redis counters use TTL and may be flushed without losing permanent audit history — every failure is also recorded in `audit_events` in Postgres.
 
 ## Quick Start
 
 ```bash
-# Start Postgres
+# Start Postgres + Redis
 docker compose up -d
 
 # Run migrations
@@ -151,6 +168,7 @@ migrate -path migrations -database "postgres://auth_user:auth_password@localhost
 # Run the server
 DATABASE_URL="postgres://auth_user:auth_password@localhost:5433/auth_db?sslmode=disable" \
 JWT_SECRET="your-secret-here" \
+REDIS_ADDR="localhost:6379" \
 go run .
 
 # Sign up
@@ -165,6 +183,7 @@ curl -i -X POST localhost:8080/api/v1/login \
 
 # Run tests
 DATABASE_URL="postgres://auth_user:auth_password@localhost:5433/auth_db?sslmode=disable" \
+REDIS_ADDR="localhost:6379" \
 go test -count=1 ./...
 ```
 
@@ -179,12 +198,13 @@ go test -count=1 ./...
 │   ├── db.go            Signup, Login, Session, RevokeSession, LoadUserRoles
 │   ├── jwt.go           JWT generation and verification
 │   ├── refresh.go       Refresh token generation, validation, rotation
+│   ├── ratelimit.go     Rate-limit keys, counters, CheckRateLimit, RecordLoginFailure, RecordLoginSuccess, RateLimitError
 │   ├── audit.go         WriteAuditEvent helper
 │   ├── outbox.go        Email alert queue
 │   └── errors.go        Typed errors (Validation, Conflict, Authentication)
 ├── api/                 HTTP layer (no raw SQL)
 │   ├── signup.go        POST /api/v1/signup
-│   ├── login.go         POST /api/v1/login
+│   ├── login.go         POST /api/v1/login (rate-limit wiring)
 │   ├── refresh.go       POST /api/v1/refresh
 │   ├── logout.go        POST /api/v1/logout
 │   ├── me.go            GET /api/v1/me
@@ -192,5 +212,5 @@ go test -count=1 ./...
 │   ├── middleware.go    RequireAuth, RequireRole
 │   └── context.go       UserInfo, SetUser/GetUser
 ├── migrations/          Database migrations (golang-migrate)
-└── docker-compose.yml   Postgres 16
+└── docker-compose.yml   Postgres 16 + Redis 8
 ```

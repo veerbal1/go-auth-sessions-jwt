@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -259,5 +260,17 @@ func TestLoginRateLimitRecordSuccessErrorReturns500(t *testing.T) {
 	}
 	if findCookie(rec.Result().Cookies(), "access_token") != nil {
 		t.Fatal("must not set access_token cookie when clearing counters fails")
+	}
+
+	var revokedAt sql.NullTime
+	db.QueryRowContext(context.Background(),
+		`SELECT s.revoked_at FROM sessions s
+		 JOIN users u ON u.id = s.user_id
+		 WHERE u.email = $1
+		 ORDER BY s.created_at DESC LIMIT 1`,
+		email,
+	).Scan(&revokedAt)
+	if !revokedAt.Valid {
+		t.Fatal("session must be revoked when RecordLoginSuccess fails")
 	}
 }
