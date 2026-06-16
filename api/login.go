@@ -72,7 +72,10 @@ func LoginHandler(db *sql.DB, jwtSecret []byte, rdb *redis.Client) http.HandlerF
 				writeError(w, http.StatusBadRequest, err.Error())
 			case errors.As(err, &authErr):
 				if rdb != nil {
-					auth.RecordLoginFailure(r.Context(), rdb, req.Email, clientIP)
+					if recErr := auth.RecordLoginFailure(r.Context(), rdb, req.Email, clientIP); recErr != nil {
+						writeError(w, http.StatusInternalServerError, "internal error")
+						return
+					}
 				}
 				writeError(w, http.StatusUnauthorized, err.Error())
 			default:
@@ -82,7 +85,10 @@ func LoginHandler(db *sql.DB, jwtSecret []byte, rdb *redis.Client) http.HandlerF
 		}
 
 		if rdb != nil {
-			auth.RecordLoginSuccess(r.Context(), rdb, req.Email, clientIP)
+			if recErr := auth.RecordLoginSuccess(r.Context(), rdb, req.Email, clientIP); recErr != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
 		}
 
 		http.SetCookie(w, &http.Cookie{
