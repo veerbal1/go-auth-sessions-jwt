@@ -7,9 +7,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/veerbal1/go-auth-sessions-jwt/api"
 	"database/sql"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
+	"github.com/veerbal1/go-auth-sessions-jwt/api"
 )
 
 func main() {
@@ -37,6 +38,18 @@ func main() {
 	}
 
 	log.Println("connected to Postgres successfully")
+
+	redisAddr := envOrDefault("REDIS_ADDR", "localhost:6379")
+	rdb := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	defer rdb.Close()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("failed to ping redis: %v", err)
+	}
+
+	log.Println("connected to Redis successfully")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/signup", api.SignupHandler(db))
