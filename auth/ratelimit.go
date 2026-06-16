@@ -52,3 +52,63 @@ func IncrementCounter(ctx context.Context, rdb *redis.Client, key string, limit 
 	exceeded := count > int64(limit)
 	return int(count), exceeded, nil
 }
+
+const DefaultRateLimit = 5
+const DefaultRateLimitTTL = 15 * time.Minute
+
+type RateLimitError struct {
+	Message string
+}
+
+func (e *RateLimitError) Error() string {
+	return e.Message
+}
+
+func CheckRateLimit(ctx context.Context, rdb *redis.Client, email, ip string) error {
+	keys := []string{
+		LoginEmailKey(email),
+	}
+	if ip != "" {
+		keys = append(keys, LoginIPKey(ip), LoginEmailIPKey(email, ip))
+	}
+
+	for _, key := range keys {
+		count, err := rdb.Get(ctx, key).Int()
+		if err == redis.Nil {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("failed to check rate limit: %w", err)
+		}
+		if count >= DefaultRateLimit {
+			return &RateLimitError{Message: "too many login attempts, try again later"}
+		}
+	}
+
+	return nil
+}
+
+func RecordLoginFailure(ctx context.Context, rdb *redis.Client, email, ip string) error {
+	keys := []string{LoginEmailKey(email)}
+	if ip != "" {
+		keys = append(keys, LoginIPKey(ip), LoginEmailIPKey(email, ip))
+	}
+
+	for _, key := range keys {
+		_, _, err := IncrementCounter(ctx, rdb, key, DefaultRateLimit, DefaultRateLimitTTL)
+		if err != nil {
+			return fmt.Errorf("failed to record login failure: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func RecordLoginSuccess(ctx context.Context, rdb *redis.Client, email, ip string) error {
+	keys := []string{LoginEmailKey(email)}
+	if ip != "" {
+		keys = append(keys, LoginIPKey(ip), LoginEmailIPKey(email, ip))
+	}
+
+	return rdb.Del(ctx, keys...).Err()
+}

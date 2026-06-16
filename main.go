@@ -53,7 +53,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/signup", api.SignupHandler(db))
-	mux.HandleFunc("POST /api/v1/login", api.LoginHandler(db, []byte(jwtSecret)))
+	mux.HandleFunc("POST /api/v1/login", api.LoginHandler(db, []byte(jwtSecret), rdb))
 	// Handle (not HandleFunc) because RequireAuth returns http.Handler, not a bare func
 	mux.Handle("GET /api/v1/me", api.RequireAuth(db, []byte(jwtSecret))(api.MeHandler()))
 	mux.HandleFunc("POST /api/v1/refresh", api.RefreshHandler(db, []byte(jwtSecret)))

@@ -31,7 +31,7 @@ func TestLoginHandlerSuccess(t *testing.T) {
 		t.Fatalf("Signup failed: %v", err)
 	}
 
-	handler := LoginHandler(db, testJWTSecret())
+	handler := LoginHandler(db, testJWTSecret(), nil)
 
 	body := fmt.Sprintf(`{"email":"%s","password":"%s"}`, email, password)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/login", strings.NewReader(body))
@@ -119,7 +119,7 @@ func TestLoginHandlerWrongPassword(t *testing.T) {
 		t.Fatalf("Signup failed: %v", err)
 	}
 
-	handler := LoginHandler(db, testJWTSecret())
+	handler := LoginHandler(db, testJWTSecret(), nil)
 
 	body := fmt.Sprintf(`{"email":"%s","password":"wrongpass"}`, email)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/login", strings.NewReader(body))
@@ -139,7 +139,7 @@ func TestLoginHandlerWrongPassword(t *testing.T) {
 
 func TestLoginHandlerInvalidJSON(t *testing.T) {
 	db := testDB(t)
-	handler := LoginHandler(db, testJWTSecret())
+	handler := LoginHandler(db, testJWTSecret(), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/login", strings.NewReader(`not json`))
 	req.Header.Set("Content-Type", "application/json")
@@ -154,7 +154,7 @@ func TestLoginHandlerInvalidJSON(t *testing.T) {
 
 func TestLoginHandlerEmptyEmail(t *testing.T) {
 	db := testDB(t)
-	handler := LoginHandler(db, testJWTSecret())
+	handler := LoginHandler(db, testJWTSecret(), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/login", strings.NewReader(`{"email":"","password":"password123"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -169,7 +169,7 @@ func TestLoginHandlerEmptyEmail(t *testing.T) {
 
 func TestLoginHandlerWrongMethod(t *testing.T) {
 	db := testDB(t)
-	handler := LoginHandler(db, testJWTSecret())
+	handler := LoginHandler(db, testJWTSecret(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
 	rec := httptest.NewRecorder()

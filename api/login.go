@@ -4,9 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
@@ -24,7 +27,7 @@ type loginResponse struct {
 	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
 }
 
-func LoginHandler(db *sql.DB, jwtSecret []byte) http.HandlerFunc {
+func LoginHandler(db *sql.DB, jwtSecret []byte, rdb *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -35,6 +38,20 @@ func LoginHandler(db *sql.DB, jwtSecret []byte) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
 			return
+		}
+
+		clientIP := extractClientIP(r)
+
+		if rdb != nil {
+			if err := auth.CheckRateLimit(r.Context(), rdb, req.Email, clientIP); err != nil {
+				var rateErr *auth.RateLimitError
+				if errors.As(err, &rateErr) {
+					writeError(w, http.StatusTooManyRequests, err.Error())
+					return
+				}
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
 		}
 
 		result, err := auth.LoginWithRefreshToken(
@@ -54,11 +71,18 @@ func LoginHandler(db *sql.DB, jwtSecret []byte) http.HandlerFunc {
 			case errors.As(err, &valErr):
 				writeError(w, http.StatusBadRequest, err.Error())
 			case errors.As(err, &authErr):
+				if rdb != nil {
+					auth.RecordLoginFailure(r.Context(), rdb, req.Email, clientIP)
+				}
 				writeError(w, http.StatusUnauthorized, err.Error())
 			default:
 				writeError(w, http.StatusInternalServerError, "internal error")
 			}
 			return
+		}
+
+		if rdb != nil {
+			auth.RecordLoginSuccess(r.Context(), rdb, req.Email, clientIP)
 		}
 
 		http.SetCookie(w, &http.Cookie{
@@ -92,4 +116,17 @@ func LoginHandler(db *sql.DB, jwtSecret []byte) http.HandlerFunc {
 			RefreshExpiresAt: result.RefreshExpiresAt,
 		})
 	}
+}
+
+func extractClientIP(r *http.Request) string {
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		parts := strings.Split(fwd, ",")
+		return strings.TrimSpace(parts[0])
+	}
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
