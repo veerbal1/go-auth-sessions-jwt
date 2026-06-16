@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 func loginAndGetCookies(t *testing.T, db *sql.DB, email, password string) (*http.Cookie, *http.Cookie) {

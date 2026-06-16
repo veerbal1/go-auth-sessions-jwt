@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 type loginRequest struct {

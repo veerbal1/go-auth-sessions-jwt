@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 func loginAndGetToken(t *testing.T, db *sql.DB, email, password string) string {

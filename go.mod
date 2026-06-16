@@ -1,4 +1,4 @@
-module auth-lab
+module github.com/veerbal1/go-auth-sessions-jwt
 
 go 1.26.4
 

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"net/http"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 type signupRequest struct {

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 func TestRequireRoleUserAccessAllowed(t *testing.T) {

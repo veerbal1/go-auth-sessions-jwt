@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"auth-lab/api"
+	"github.com/veerbal1/go-auth-sessions-jwt/api"
 	"database/sql"
 	_ "github.com/lib/pq"
 )

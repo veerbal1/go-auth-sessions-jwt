@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 type logoutResponse struct {

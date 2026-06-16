@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"auth-lab/auth"
+	"github.com/veerbal1/go-auth-sessions-jwt/auth"
 )
 
 func RequireAuth(db *sql.DB, jwtSecret []byte) func(http.Handler) http.Handler {
